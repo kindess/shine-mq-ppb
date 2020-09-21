@@ -45,8 +45,15 @@ public class RabbitmqFactory implements Factory {
 
     private MqProperties.Rabbit rabbit;
 
+    /**
+     * 连接工厂，AbstractConnectionFactory默认支持rabbitmq多线程连接，
+     * CachingConnectionFactory通过动态代理调用了"basicPublish", "basicAck", "basicNack", "basicReject"等等的底层实现
+     */
     private static CachingConnectionFactory rabbitConnectionFactory;
 
+    /**
+     * 队列、交换机创建、删除
+     */
     private RabbitAdmin rabbitAdmin;
 
     protected RabbitTemplate rabbitTemplate;
@@ -80,6 +87,12 @@ public class RabbitmqFactory implements Factory {
         template = new RabbitmqTemplate(this, rabbitTemplate, serializerMessageConverter);
     }
 
+    /**
+     * 私有构造器，暴露getInstance方法获取实例
+     * @param config
+     * @param factory
+     * @return
+     */
     public synchronized static RabbitmqFactory getInstance(MqProperties config, CachingConnectionFactory factory) {
         rabbitConnectionFactory = factory;
         //设置生成者确认机制
@@ -122,16 +135,17 @@ public class RabbitmqFactory implements Factory {
             throw new ShineMqException("Distributed transactions must use MANUAL(AcknowledgeMode=1) mode!");
         }
         //消息发送到RabbitMQ交换器后接收ack回调
-        rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> {
+        rabbitTemplate.setConfirmCallback((correlationData, ack, cause) -> { // 匿名实现
             if (correlationData != null) {
                 log.info("ConfirmCallback ack: {} correlationData: {} cause: {}", ack, correlationData, cause);
                 String msgId = correlationData.getId();
                 CorrelationDataExt ext = (CorrelationDataExt) correlationData;
                 if (ext.getMessage() != null ) {
                     if (SendTypeEnum.DISTRIBUTED.toString().equals(ext.getMessage().getSendTypeEnum())) {
+                        // 确认MQ收到消息后，将调用自定义回调，作redis消息状态的缓存
                         Coordinator coordinator = (Coordinator) applicationContext.getBean(ext.getCoordinator());
                         coordinator.confirmCallback(correlationData, ack);
-                        // 如果发送到交换器成功，但是没有匹配的队列（比如说取消了绑定），ack返回值为还是true（这里是一个坑，需要注意）
+                        // 如果发送到交换器成功，但是没有匹配的队列（比如说取消了绑定、交换机队列未正确绑定），ack返回值为还是true（这里是一个坑，需要注意）
                         if (ack && !coordinator.getReturnCallback(msgId)) {
                             log.info("The message has been successfully delivered to the queue, correlationData:{}", correlationData);
                             coordinator.delReady(msgId);
@@ -200,6 +214,7 @@ public class RabbitmqFactory implements Factory {
     public Factory add(String queueName, String exchangeName, String routingKey, Processor processor, SendTypeEnum type,
                        MessageConverter messageConverter) {
         if (processor != null) {
+            // 存储了交换机-队列关系、队列中Json数据类型格式的转换器（ps: 同队列数据类型唯一）以及数据对应的消费接口类型
             msgAdapterHandler.add(exchangeName, routingKey, processor, type, messageConverter);
             if (rabbit.isListenerEnable()) {
                 declareBinding(queueName, exchangeName, routingKey, true,
@@ -307,8 +322,10 @@ public class RabbitmqFactory implements Factory {
 
     /**
      * 扩展消息的CorrelationData，方便在回调中应用
+     * 用扩展对象替换了原始的CorrelationData对象
      */
     public void setCorrelationData(String id, String coordinator, EventMessage msg, Integer retry) {
+        // setCorrelationDataPostProcessor: 设置前置处理器
         rabbitTemplate.setCorrelationDataPostProcessor(((message, correlationData) ->
                 new CorrelationDataExt(id, coordinator,
                         retry == null ? config.getDistributed().getCommitMaxRetries() : retry, msg)));

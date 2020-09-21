@@ -36,6 +36,9 @@ public class MessageAdapterHandler implements ChannelAwareMessageListener {
 
     private static final Logger logger = LoggerFactory.getLogger(MessageAdapterHandler.class);
 
+    /**
+     * 缓存每个队列与对应的消费的接口的绑定关系，以及每个队列中的JSON数据与Object对象的之间转换关系（发送到同队列中的数据是同一种Object对象）
+     */
     private ConcurrentMap<String, ProcessorWrap> map;
 
     @Autowired
@@ -48,6 +51,15 @@ public class MessageAdapterHandler implements ChannelAwareMessageListener {
         this.map = new ConcurrentHashMap<>();
     }
 
+    /**
+     * RabbitmqFactory落地添加、删除队列和交换机，而MessageAdapterHandler中的add、remove存储exchange-queue关系。
+     * 减少队列、交换机在rabbit的broker中不必要的再次声明（减少web系统与rabbit之间网络交互时间），如在生产者中已经生成交换机与队列，消费者端就不必要再次声明，虽然broker中存在队列、交换机会直接返回
+     * @param exchangeName
+     * @param routingKey
+     * @param processor
+     * @param type
+     * @param messageConverter
+     */
     protected void add(String exchangeName, String routingKey, Processor processor, SendTypeEnum type,
                        MessageConverter messageConverter) {
 
@@ -76,6 +88,7 @@ public class MessageAdapterHandler implements ChannelAwareMessageListener {
         String msgId = message.getMessageProperties().getMessageId();
         try {
             ProcessorWrap wrap;
+            // TODO 阿里fastJson存在漏洞，需要替换掉JSON框架
             em = JSON.parseObject(message.getBody(), EventMessage.class);
             if (MqConstant.DEAD_LETTER_EXCHANGE.equals(message.getMessageProperties().getReceivedExchange()) &&
                     MqConstant.DEAD_LETTER_ROUTEKEY.equals(message.getMessageProperties().getReceivedRoutingKey())) {
@@ -130,8 +143,10 @@ public class MessageAdapterHandler implements ChannelAwareMessageListener {
 
     protected static class ProcessorWrap {
 
+        // springboot-rabbitMQ内置的消息转换器
         private MessageConverter messageConverter;
 
+        // 消费接口
         private Processor processor;
 
         protected ProcessorWrap(MessageConverter messageConverter, Processor processor) {

@@ -89,7 +89,9 @@ public class RabbitmqTemplate implements Template {
         messageProperties.setMessageId(msgId);
         // 设置消息持久化
         messageProperties.setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+        // 消息转换处理，可自定义实现MessageConverter接口的转换处理过程，如何将自定义类型的EventMessage转为Message
         Message message = messageConverter.toMessage(eventMessage, messageProperties);
+        // 替换掉原始的CorrelationData对象，在执行ConfirmCallback回调（生产者成功发送到MQ）时，可以拿到扩展数据CorrelationDataExt
         rabbitmqFactory.setCorrelationData(msgId, null, eventMessage, null);
         try {
             if (SendTypeEnum.RPC.equals(type)) {

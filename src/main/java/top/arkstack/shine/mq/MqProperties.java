@@ -10,6 +10,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * @version 2.0.0
  */
 @Data
+/**
+ * 将yml配置中前缀为"shine.mq"的配置加载到此属性类中
+ */
 @ConfigurationProperties("shine.mq")
 public class MqProperties {
 
@@ -67,6 +70,10 @@ public class MqProperties {
         /**
          * {@link org.springframework.amqp.core.AcknowledgeMode}
          * <p>
+         *
+         * AcknowledgeMode.NONE：不确认
+         * AcknowledgeMode.AUTO：自动确认
+         * AcknowledgeMode.MANUAL：手动确认
          * 0 AUTO
          * 1 MANUAL
          * 2 NONE
@@ -99,7 +106,7 @@ public class MqProperties {
         private boolean autoDelete = false;
 
         /**
-         * 是否初始化消息监听者， 若服务只是Producer则关闭
+         * 是否初始化消息监听者， 若服务只是Producer则关闭，生产者服务没有必要开启消息监听，只负责生产消息
          */
         private boolean listenerEnable = false;
 

@@ -38,18 +38,22 @@ public class DistributedTransAspect {
     private volatile boolean flag = true;
 
 
+   // @annotation(trans): 方法入参中的DistributedTrans类型，所有注解@DistributedTrans的方法
     @Around(value = "@annotation(trans)")
     public void around(ProceedingJoinPoint pjp, DistributedTrans trans) throws Throwable {
+        // 1、是否开启事务
         if (!rabbitmqFactory.getConfig().getDistributed().isTransaction()) {
             throw new ShineMqException("Use distributed transaction, the transaction parameter must be true.");
         }
 
+        // 2、获取方法入参
         log.info("Start distributed transaction : {} ", trans);
         String exchange = trans.exchange();
         String routeKey = trans.routeKey();
         String coordinatorName = trans.coordinator();
         Coordinator coordinator;
         try {
+            // 协调者实现
             coordinator = (Coordinator) context.getBean(coordinatorName);
         } catch (Exception e) {
             log.error("No coordinator or not joined the spring container : ", e);
@@ -59,6 +63,7 @@ public class DistributedTransAspect {
         String msgId = coordinatorName + MqConstant.SPLIT + trans.bizId() + MqConstant.SPLIT + HttpUtil.getIpAddress()
                 + MqConstant.SPLIT + System.currentTimeMillis();
         Object bean;
+        // 3、执行被注解的方法，获取方法的返回值
         try {
             bean = pjp.proceed();
         } catch (Exception e) {
@@ -69,10 +74,12 @@ public class DistributedTransAspect {
             throw new ShineMqException("Return value please use TransferBean.");
         }
         TransferBean transferBean = (TransferBean) bean;
+        // 拿到方法执行后返回的回调检查id
         if (transferBean.getCheckBackId() == null) {
             throw new ShineMqException("Check back id cannot be empty.");
         }
         try {
+            // SendTypeEnum.DISTRIBUTED: 分布式事务消息
             EventMessage message = new EventMessage(exchange, routeKey, SendTypeEnum.DISTRIBUTED.toString(), transferBean,
                     coordinatorName, msgId, trans.rollback());
             //将消息持久化

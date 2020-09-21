@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.util.ErrorHandler;
 
 /**
- * 异常处理
+ * MQ异常处理
  *
  * @author 7le
  * @version 1.0.0
